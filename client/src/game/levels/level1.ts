@@ -78,7 +78,7 @@ const level1: LevelConfig = {
       waveDelay: 0 // Last wave
     }
   ],
-  initialGold: 120,
+  initialGold: 5000,
   buildableAreas: [
     // Areas beside the path where towers can be built
     { center: new Vector3(-10, 0, -5), width: 10, height: 10 },
