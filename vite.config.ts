@@ -27,4 +27,16 @@ export default defineConfig({
   },
   // Add support for large models and audio files
   assetsInclude: ["**/*.gltf", "**/*.glb", "**/*.mp3", "**/*.ogg", "**/*.wav"],
+  server: {
+    host: "0.0.0.0",
+    port: 12000,
+    cors: true,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "X-Frame-Options": "ALLOWALL"
+    },
+    hmr: {
+      clientPort: 12000
+    }
+  }
 });

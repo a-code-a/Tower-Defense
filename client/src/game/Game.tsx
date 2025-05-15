@@ -5,17 +5,26 @@ import {
   OrbitControls, 
   PerspectiveCamera,
   Environment,
-  useHelper
+  useHelper,
+  PerformanceMonitor,
+  AdaptiveDpr,
+  Preload,
+  Effects
 } from "@react-three/drei";
+import { EffectComposer, Bloom, Vignette, DepthOfField } from "@react-three/postprocessing";
 import * as THREE from "three";
+
+// Desktop optimizations
+import { isElectron, useDesktopOptimizations, applyDesktopSettings } from "../utils/desktopOptimizations";
 
 // Game components
 import { Level } from "./components/Level";
 import { Path } from "./components/Path";
-import { Tower } from "./components/Tower";
-import { Enemy } from "./components/Enemy";
-import { Projectile } from "./components/Projectile";
+import { EnhancedTower } from "./components/EnhancedTower";
+import { MinionEnemy } from "./components/MinionEnemy";
+import { EnhancedProjectile } from "./components/EnhancedProjectile";
 import { Base } from "./components/Base";
+import { EnhancedEnvironment } from "./components/EnhancedEnvironment";
 
 // UI components
 import GameUI from "./components/UI/GameUI";
@@ -99,30 +108,77 @@ function PlacementPlane({ onPlacePosition }: { onPlacePosition: (position: Vecto
   );
 }
 
-// Scene lighting
-function Lights() {
-  const directionalLightRef = useRef<THREE.DirectionalLight>(null);
+// Tower placement preview with animation
+function TowerPreview({ position, isValid, towerType }: { position: Vector3, isValid: boolean, towerType: string }) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const glowRef = useRef<THREE.Mesh>(null);
   
-  // Debug light helper (only in development)
-  // useHelper(directionalLightRef, THREE.DirectionalLightHelper, 5, "red");
+  // Animate preview
+  useFrame((_, delta) => {
+    if (!meshRef.current || !glowRef.current) return;
+    
+    // Rotate preview
+    meshRef.current.rotation.y += delta * 1.5;
+    
+    // Pulse glow
+    const scale = 1 + Math.sin(Date.now() * 0.005) * 0.1;
+    glowRef.current.scale.set(scale, scale, scale);
+  });
+  
+  // Color based on tower type and validity
+  const color = isValid 
+    ? (towerType === "cannon" ? "#ff4400" : towerType === "laser" ? "#00aaff" : "#44ff00")
+    : "#ff0000";
   
   return (
-    <>
-      <ambientLight intensity={0.5} />
-      <directionalLight
-        ref={directionalLightRef}
-        position={[10, 15, 10]}
-        intensity={1}
+    <group position={position}>
+      {/* Base platform */}
+      <mesh position={[0, 0, 0]} receiveShadow>
+        <cylinderGeometry args={[1.2, 1.2, 0.1, 16]} />
+        <meshStandardMaterial 
+          color={color} 
+          transparent 
+          opacity={0.7}
+          emissive={color}
+          emissiveIntensity={0.5}
+        />
+      </mesh>
+      
+      {/* Tower preview */}
+      <mesh 
+        ref={meshRef}
+        position={[0, 0.5, 0]} 
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-far={50}
-        shadow-camera-left={-20}
-        shadow-camera-right={20}
-        shadow-camera-top={20}
-        shadow-camera-bottom={-20}
-      />
-    </>
+      >
+        {towerType === "cannon" ? (
+          <cylinderGeometry args={[0.5, 0.7, 1, 8]} />
+        ) : towerType === "laser" ? (
+          <boxGeometry args={[0.8, 1, 0.8]} />
+        ) : (
+          <coneGeometry args={[0.5, 1.2, 8]} />
+        )}
+        <meshStandardMaterial 
+          color={color} 
+          transparent 
+          opacity={0.7}
+          wireframe={true}
+        />
+      </mesh>
+      
+      {/* Glow effect */}
+      <mesh 
+        ref={glowRef}
+        position={[0, 0.5, 0]}
+      >
+        <sphereGeometry args={[1.3, 16, 16]} />
+        <meshBasicMaterial 
+          color={color} 
+          transparent 
+          opacity={0.15}
+          side={THREE.BackSide}
+        />
+      </mesh>
+    </group>
   );
 }
 
@@ -130,6 +186,9 @@ function Lights() {
 export default function Game() {
   const { levelId, getLevel } = useGameState();
   const level = getLevel(levelId || 1);
+  
+  // Set higher initial DPR for desktop
+  const [dpr, setDpr] = useState(isElectron() ? 2.0 : 1.5);
   
   const { 
     towers,
@@ -169,17 +228,43 @@ export default function Game() {
         onClick={handleTowerPlacement}
         onPointerDown={handleTowerPlacement} // Handle touch start events
         camera={{ position: [0, 15, 25], fov: 60 }}
+        dpr={dpr}
+        gl={{ 
+          antialias: true,
+          alpha: false,
+          powerPreference: "high-performance",
+          stencil: false,
+          depth: true
+        }}
       >
-        <color attach="background" args={["#87CEEB"]} />
+        {/* Performance monitoring - more aggressive in desktop mode */}
+        <PerformanceMonitor
+          onIncline={() => {
+            const maxDpr = isElectron() ? 3.0 : 2.0;
+            const increment = isElectron() ? 0.75 : 0.5;
+            setDpr(Math.min(maxDpr, dpr + increment));
+          }}
+          onDecline={() => {
+            const minDpr = isElectron() ? 1.5 : 1.0;
+            const decrement = isElectron() ? 0.5 : 0.5;
+            setDpr(Math.max(minDpr, dpr - decrement));
+          }}
+        >
+          <AdaptiveDpr pixelated />
+        </PerformanceMonitor>
         
         <Suspense fallback={null}>
+          {/* Apply desktop optimizations */}
+          <DesktopOptimizer />
+          
           <PerspectiveCamera
             makeDefault
             position={[0, 15, 25]}
             fov={60}
           />
           
-          <Lights />
+          {/* Enhanced environment */}
+          <EnhancedEnvironment levelConfig={level} />
           
           {/* Level geometry */}
           <Level levelConfig={level} />
@@ -192,27 +277,21 @@ export default function Game() {
           
           {/* Towers */}
           {towers.map(tower => (
-            <Tower key={tower.id} tower={tower} />
+            <EnhancedTower key={tower.id} tower={tower} />
           ))}
           
           {/* Tower placement preview */}
           {placementMode === "placing" && hoverPosition && (
-            <mesh 
+            <TowerPreview 
               position={hoverPosition}
-              scale={[1.5, 1, 1.5]}
-            >
-              <boxGeometry />
-              <meshStandardMaterial 
-                color={isValidPlacement ? "#00ff00" : "#ff0000"} 
-                transparent 
-                opacity={0.5} 
-              />
-            </mesh>
+              isValid={isValidPlacement}
+              towerType={selectedTowerType}
+            />
           )}
           
           {/* Enemies */}
           {enemies.map(enemy => (
-            <Enemy 
+            <MinionEnemy 
               key={enemy.id} 
               enemy={enemy} 
               levelConfig={level} 
@@ -221,7 +300,7 @@ export default function Game() {
           
           {/* Projectiles */}
           {projectiles.map(projectile => (
-            <Projectile
+            <EnhancedProjectile
               key={projectile.id}
               {...projectile}
             />
@@ -229,9 +308,6 @@ export default function Game() {
           
           {/* Plane for tower placement */}
           <PlacementPlane onPlacePosition={updatePlacementPosition} />
-          
-          {/* Environment */}
-          <Environment preset="sunset" />
           
           {/* Camera controls with touch support */}
           <OrbitControls 
@@ -252,6 +328,28 @@ export default function Game() {
               TWO: THREE.TOUCH.ROTATE
             }}
           />
+          
+          {/* Post-processing effects */}
+          <EffectComposer>
+            <Bloom 
+              intensity={0.5} 
+              luminanceThreshold={0.8} 
+              luminanceSmoothing={0.9} 
+            />
+            <DepthOfField 
+              focusDistance={0} 
+              focalLength={0.02} 
+              bokehScale={2} 
+              height={480} 
+            />
+            <Vignette 
+              offset={0.5} 
+              darkness={0.5} 
+              eskil={false} 
+            />
+          </EffectComposer>
+          
+          <Preload all />
         </Suspense>
         
         {/* Game loop */}
@@ -266,6 +364,22 @@ export default function Game() {
       />
     </div>
   );
+}
+
+// Desktop optimizations component
+function DesktopOptimizer() {
+  // Apply desktop-specific optimizations
+  useDesktopOptimizations();
+  
+  useEffect(() => {
+    // Apply desktop settings
+    if (isElectron()) {
+      console.log("Running in Electron - applying desktop optimizations");
+      applyDesktopSettings();
+    }
+  }, []);
+  
+  return null;
 }
 
 // Game loop component (handles frame updates)

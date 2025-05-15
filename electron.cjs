@@ -25,14 +25,14 @@ function createWindow() {
   // Load the app
   if (isDev) {
     // In development, load from the dev server
-    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.loadURL('http://localhost:12000');
     // Open DevTools
     mainWindow.webContents.openDevTools();
   } else {
     // In production, load the built files
     mainWindow.loadURL(
       url.format({
-        pathname: path.join(__dirname, 'dist/public/index.html'),
+        pathname: path.join(__dirname, 'dist/index.html'),
         protocol: 'file:',
         slashes: true
       })
